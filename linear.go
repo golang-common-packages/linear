@@ -185,10 +185,11 @@ func removeItemByIndex(s []string, idx int) []string {
 }
 
 // findIndexByItem return index belong to the key
+// Source: https://stackoverflow.com/questions/46745043/performance-of-for-range-in-go
 func findIndexByItem(keyName string, items []string) (int, bool) {
-	for i, key := range items {
-		if keyName == key {
-			return i, true
+	for index := range items {
+		if keyName == items[index] {
+			return index, true
 		}
 	}
 
