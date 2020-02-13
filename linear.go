@@ -96,28 +96,35 @@ func (l *Linear) Take() (interface{}, error) {
 }
 
 // Get method return the item by key from linear and remove it
+// Goroutine: https://stackoverflow.com/questions/20945069/catching-return-values-from-goroutines
 func (l *Linear) Get(key string) (interface{}, error) {
 	if l.IsEmpty() {
 		return nil, errors.New("linear is empty")
 	}
 
-	item, exits := l.items.Load(key)
-	if !exits {
-		return nil, errors.New("this key does not exits")
-	}
+	var (
+		wg             sync.WaitGroup
+		item           interface{}
+		itemExits      bool
+		itemIndex      int
+		itemIndexExits bool
+	)
 
-	// Find index belong to that key
-	keyIndex := 0
-	for i, k := range l.keys {
-		if key == k {
-			keyIndex = i
-			break
-		}
-	}
+	wg.Add(2)
+	go func() {
+		item, itemExits = l.items.Load(key)
+		wg.Done()
+	}()
+
+	go func() {
+		itemIndex, itemIndexExits = findIndexByItem(key, l.keys)
+		wg.Done()
+	}()
+	wg.Wait()
 
 	l.rwMutex.Lock()
 	l.items.Delete(key)
-	l.keys = removeItemByIndex(l.keys, keyIndex) //Update keys slice after remove that key from items map
+	l.keys = removeItemByIndex(l.keys, itemIndex) //Update keys slice after remove that key from items map
 	l.rwMutex.Unlock()
 
 	return item, nil
@@ -170,8 +177,20 @@ func (l *Linear) GetLinearCurrentSize() int64 {
 }
 
 // removeItemByIndex remove item out of []string by index but maintains order, and return the new one
+// Source: https://yourbasic.org/golang/delete-element-slice/
 func removeItemByIndex(s []string, idx int) []string {
 	copy(s[idx:], s[idx+1:]) // Shift s[idx+1:] left one index.
 	s[len(s)-1] = ""         // Erase last element (write zero value).
 	return s[:len(s)-1]      // Truncate s.
+}
+
+// findIndexByItem return index belong to the key
+func findIndexByItem(keyName string, items []string) (int, bool) {
+	for i, key := range items {
+		if keyName == key {
+			return i, true
+		}
+	}
+
+	return -1, false
 }
