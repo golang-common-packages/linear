@@ -156,9 +156,11 @@ func (c *Client) Udpate(key string, value interface{}) error {
 
 	c.rwMutex.Lock()
 	exits := c.IsExits(key)
-	if exits {
-		c.items.Store(key, value)
+	if !exits {
+		c.rwMutex.Unlock()
+		return errors.New("key does not exit")
 	}
+	c.items.Store(key, value)
 	c.rwMutex.Unlock()
 
 	return nil
