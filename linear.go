@@ -32,7 +32,7 @@ func New(linearSizes int64, sizeChecker bool) *Client {
 
 // Push item to the linear by key
 func (c *Client) Push(key string, value interface{}) error {
-	itemSize := int64(unsafe.Sizeof(key) + unsafe.Sizeof(value))
+	itemSize := int64(unsafe.Sizeof(key)) + int64(unsafe.Sizeof(value))
 	if itemSize > c.linearSizes || key == "" {
 		return errors.New("key is empty or linear not enough space")
 	}
