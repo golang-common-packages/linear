@@ -148,9 +148,35 @@ func (c *Client) Read(key string) (interface{}, error) {
 	return item, nil
 }
 
+// Udpate reassign value to the key
+func (c *Client) Udpate(key string, value interface{}) error {
+	if c.IsEmpty() {
+		return errors.New("linear is empty")
+	}
+
+	c.rwMutex.Lock()
+	exits := c.IsExits(key)
+	if exits {
+		c.items.Store(key, value)
+	}
+	c.rwMutex.Unlock()
+
+	return nil
+}
+
 // Range the LinearClient
 func (c *Client) Range(fn func(key, value interface{}) bool) {
 	c.items.Range(fn)
+}
+
+// IsExits check key exits or not
+func (c *Client) IsExits(key string) bool {
+	_, exits := c.items.Load(key)
+	if !exits {
+		return false
+	}
+
+	return true
 }
 
 // IsEmpty check linear size
