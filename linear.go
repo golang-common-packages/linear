@@ -32,7 +32,7 @@ func New(linearSizes int64, sizeChecker bool) *Client {
 
 // Push item to the linear by key
 func (c *Client) Push(key string, value interface{}) error {
-	itemSize := int64(reflect.Type.Size(key) + reflect.Type.Size(value))
+	itemSize := int64(reflect.Type.Size(key) + reflect.Type.Size(reflect.ValueOf(value)))
 	if itemSize > c.linearSizes || key == "" {
 		return errors.New("key is empty or linear not enough space")
 	}
@@ -45,7 +45,7 @@ func (c *Client) Push(key string, value interface{}) error {
 	}
 
 	c.rwMutex.Lock()
-	c.linearCurrentSizes += int64(reflect.Type.Size(value))
+	c.linearCurrentSizes += int64(reflect.Type.Size(reflect.ValueOf(value)))
 	c.keys = append(c.keys, key)
 	c.items.LoadOrStore(key, value)
 	c.rwMutex.Unlock()
@@ -66,7 +66,7 @@ func (c *Client) Pop() (interface{}, error) {
 	}
 
 	c.rwMutex.Lock()
-	c.linearCurrentSizes = c.linearCurrentSizes - int64(reflect.Type.Size(item))
+	c.linearCurrentSizes = c.linearCurrentSizes - int64(reflect.Type.Size(reflect.ValueOf(item)))
 	c.items.Delete(c.keys[lastItemIndex])
 	c.keys = removeItemByIndex(c.keys, lastItemIndex) //Update keys slice after remove that key from items map
 	c.rwMutex.Unlock()
@@ -87,7 +87,7 @@ func (c *Client) Take() (interface{}, error) {
 		return nil, nil
 	}
 
-	c.linearCurrentSizes -= int64(reflect.Type.Size(item))
+	c.linearCurrentSizes -= int64(reflect.Type.Size(reflect.ValueOf(item)))
 	c.items.Delete(c.keys[0])
 	c.keys = removeItemByIndex(c.keys, 0) //Update keys slice after remove that key from items map
 	c.rwMutex.Unlock()
