@@ -186,6 +186,16 @@ func (c *Client) IsEmpty() bool {
 	return len(c.keys) == 0
 }
 
+// GetItems return the map contain items
+func (c *Client) GetItems() sync.Map {
+	return c.items
+}
+
+// Getkeys return the list of key
+func (c *Client) Getkeys() []string {
+	return c.keys
+}
+
 // GetNumberOfKeys return the number of keys
 func (c *Client) GetNumberOfKeys() int {
 	return len(c.keys)
