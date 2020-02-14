@@ -122,16 +122,16 @@ func (c *Client) Get(key string) (interface{}, error) {
 	}()
 	wg.Wait()
 
-	if itemExits || itemIndexExits {
-		return nil, nil
+	if itemExits && itemIndexExits {
+		c.rwMutex.Lock()
+		c.items.Delete(key)
+		c.keys = removeItemByIndex(c.keys, itemIndex) //Update keys slice after remove that key from items map
+		c.rwMutex.Unlock()
+
+		return item, nil
 	}
 
-	c.rwMutex.Lock()
-	c.items.Delete(key)
-	c.keys = removeItemByIndex(c.keys, itemIndex) //Update keys slice after remove that key from items map
-	c.rwMutex.Unlock()
-
-	return item, nil
+	return nil, nil
 }
 
 // Read method return the item by key from linear without remove it
@@ -148,8 +148,8 @@ func (c *Client) Read(key string) (interface{}, error) {
 	return item, nil
 }
 
-// Udpate reassign value to the key
-func (c *Client) Udpate(key string, value interface{}) error {
+// Update reassign value to the key
+func (c *Client) Update(key string, value interface{}) error {
 	if c.IsEmpty() {
 		return errors.New("linear is empty")
 	}
