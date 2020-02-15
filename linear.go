@@ -45,9 +45,9 @@ func (c *Client) Push(key string, value interface{}) error {
 	}
 
 	c.rwMutex.Lock()
+	c.items.LoadOrStore(key, value)
 	c.linearCurrentSizes += int64(unsafe.Sizeof(value))
 	c.keys = append(c.keys, key)
-	c.items.LoadOrStore(key, value)
 	c.rwMutex.Unlock()
 
 	return nil
@@ -66,8 +66,8 @@ func (c *Client) Pop() (interface{}, error) {
 	}
 
 	c.rwMutex.Lock()
-	c.linearCurrentSizes = c.linearCurrentSizes - int64(unsafe.Sizeof(item))
 	c.items.Delete(c.keys[lastItemIndex])
+	c.linearCurrentSizes -= int64(unsafe.Sizeof(item))
 	c.keys = removeItemByIndex(c.keys, lastItemIndex) //Update keys slice after remove that key from items map
 	c.rwMutex.Unlock()
 
@@ -87,8 +87,8 @@ func (c *Client) Take() (interface{}, error) {
 		return nil, nil
 	}
 
-	c.linearCurrentSizes -= int64(unsafe.Sizeof(item))
 	c.items.Delete(c.keys[0])
+	c.linearCurrentSizes -= int64(unsafe.Sizeof(item))
 	c.keys = removeItemByIndex(c.keys, 0) //Update keys slice after remove that key from items map
 	c.rwMutex.Unlock()
 
@@ -125,6 +125,7 @@ func (c *Client) Get(key string) (interface{}, error) {
 	if itemExits && itemIndexExits {
 		c.rwMutex.Lock()
 		c.items.Delete(key)
+		c.linearCurrentSizes -= int64(unsafe.Sizeof(item))
 		c.keys = removeItemByIndex(c.keys, itemIndex) //Update keys slice after remove that key from items map
 		c.rwMutex.Unlock()
 
@@ -150,17 +151,19 @@ func (c *Client) Read(key string) (interface{}, error) {
 
 // Update reassign value to the key
 func (c *Client) Update(key string, value interface{}) error {
-	if c.IsEmpty() {
-		return errors.New("linear is empty")
+	newItemSize := int64(unsafe.Sizeof(key)) + int64(unsafe.Sizeof(value))
+	if newItemSize > c.linearSizes || c.IsEmpty() {
+		return errors.New("linear is empty or not enough space")
 	}
 
 	c.rwMutex.Lock()
-	exits := c.IsExits(key)
+	currentSize, exits := c.IsExits(key)
 	if !exits {
 		c.rwMutex.Unlock()
 		return errors.New("key does not exit")
 	}
 	c.items.Store(key, value)
+	c.linearCurrentSizes += currentSize - newItemSize
 	c.rwMutex.Unlock()
 
 	return nil
@@ -172,13 +175,13 @@ func (c *Client) Range(fn func(key, value interface{}) bool) {
 }
 
 // IsExits check key exits or not
-func (c *Client) IsExits(key string) bool {
-	_, exits := c.items.Load(key)
+func (c *Client) IsExits(key string) (int64, bool) {
+	value, exits := c.items.Load(key)
 	if !exits {
-		return false
+		return 0, false
 	}
 
-	return true
+	return int64(unsafe.Sizeof(key)) + int64(unsafe.Sizeof(value)), true
 }
 
 // IsEmpty check linear size
