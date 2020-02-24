@@ -2,11 +2,12 @@ package linear
 
 import (
 	"errors"
+	"log"
 	"sync"
 	"unsafe"
 )
 
-// LinearClient contains all attributes
+// Client contains all the properties
 type Client struct {
 	items              sync.Map
 	keys               []string
@@ -16,8 +17,17 @@ type Client struct {
 	rwMutex            sync.RWMutex
 }
 
-// New return new instance
-func New(linearSizes int64, sizeChecker bool) *Client {
+// New return new linear instance
+func New(
+	linearSizes int64,
+	sizeChecker bool) *Client {
+
+	// Argument validator
+	if linearSizes <= 0 {
+		log.Println("linearSizes much higher than 0")
+		panic(errors.New("linearSizes much higher than 0"))
+	}
+
 	currentLinear := Client{
 		keys:               []string{},
 		items:              sync.Map{},
@@ -31,7 +41,16 @@ func New(linearSizes int64, sizeChecker bool) *Client {
 }
 
 // Push item to the linear by key
-func (c *Client) Push(key string, value interface{}) error {
+func (c *Client) Push(
+	key string,
+	value interface{}) error {
+
+	// Argument validator
+	if key == "" && value == nil {
+		log.Println("key and value much not empty")
+		panic(errors.New("key and value much not empty"))
+	}
+
 	itemSize := int64(unsafe.Sizeof(key)) + int64(unsafe.Sizeof(value))
 	if itemSize > c.linearSizes || key == "" {
 		return errors.New("key is empty or linear not enough space")
@@ -55,6 +74,7 @@ func (c *Client) Push(key string, value interface{}) error {
 
 // Pop return the last item from the linear and remove it
 func (c *Client) Pop() (interface{}, error) {
+	// Execution conditions
 	if c.IsEmpty() {
 		return nil, errors.New("the linear is empty")
 	}
@@ -76,6 +96,7 @@ func (c *Client) Pop() (interface{}, error) {
 
 // Take return the first item from the linear and remove it
 func (c *Client) Take() (interface{}, error) {
+	// Execution conditions
 	if c.IsEmpty() {
 		return nil, errors.New("the linear is empty")
 	}
@@ -97,7 +118,16 @@ func (c *Client) Take() (interface{}, error) {
 
 // Get method return the item by key from linear and remove it
 // Goroutine: https://stackoverflow.com/questions/20945069/catching-return-values-from-goroutines
-func (c *Client) Get(key string) (interface{}, error) {
+func (c *Client) Get(
+	key string) (interface{}, error) {
+
+	// Argument validator
+	if key == "" {
+		log.Println("key much not empty")
+		panic(errors.New("key much not empty"))
+	}
+
+	// Execution conditions
 	if c.IsEmpty() {
 		return nil, errors.New("linear is empty")
 	}
@@ -136,7 +166,16 @@ func (c *Client) Get(key string) (interface{}, error) {
 }
 
 // Read method return the item by key from linear without remove it
-func (c *Client) Read(key string) (interface{}, error) {
+func (c *Client) Read(
+	key string) (interface{}, error) {
+
+	// Argument validator
+	if key == "" {
+		log.Println("key much not empty")
+		panic(errors.New("key much not empty"))
+	}
+
+	// Execution conditions
 	if c.IsEmpty() {
 		return nil, errors.New("linear is empty")
 	}
@@ -150,7 +189,21 @@ func (c *Client) Read(key string) (interface{}, error) {
 }
 
 // Update reassign value to the key
-func (c *Client) Update(key string, value interface{}) error {
+func (c *Client) Update(
+	key string,
+	value interface{}) error {
+
+	// Argument validator
+	if key == "" && value == nil {
+		log.Println("key and value much not empty")
+		panic(errors.New("key and value much not empty"))
+	}
+
+	// Execution conditions
+	if c.IsEmpty() {
+		return errors.New("linear is empty")
+	}
+
 	newItemSize := int64(unsafe.Sizeof(key)) + int64(unsafe.Sizeof(value))
 	if newItemSize > c.linearSizes || c.IsEmpty() {
 		return errors.New("linear is empty or not enough space")
@@ -175,7 +228,15 @@ func (c *Client) Range(fn func(key, value interface{}) bool) {
 }
 
 // IsExits check key exits or not
-func (c *Client) IsExits(key string) (int64, bool) {
+func (c *Client) IsExits(
+	key string) (int64, bool) {
+
+	// Argument validator
+	if key == "" {
+		log.Println("key much not empty")
+		panic(errors.New("key much not empty"))
+	}
+
 	value, exits := c.items.Load(key)
 	if !exits {
 		return 0, false
@@ -210,7 +271,15 @@ func (c *Client) GetLinearSizes() int64 {
 }
 
 // SetLinearSizes change the linear size with new value
-func (c *Client) SetLinearSizes(linearSizes int64) {
+func (c *Client) SetLinearSizes(
+	linearSizes int64) {
+
+	// Argument validator
+	if linearSizes <= 0 {
+		log.Println("linearSizes much higher than 0")
+		panic(errors.New("linearSizes much higher than 0"))
+	}
+
 	c.rwMutex.RLock()
 	c.linearSizes = linearSizes
 	c.rwMutex.RUnlock()
@@ -223,15 +292,21 @@ func (c *Client) GetLinearCurrentSize() int64 {
 
 // removeItemByIndex remove item out of []string by index but maintains order, and return the new one
 // Source: https://yourbasic.org/golang/delete-element-slice/
-func removeItemByIndex(s []string, idx int) []string {
-	copy(s[idx:], s[idx+1:]) // Shift s[idx+1:] left one index.
-	s[len(s)-1] = ""         // Erase last element (write zero value).
-	return s[:len(s)-1]      // Truncate s.
+func removeItemByIndex(
+	slice []string,
+	idx int) []string {
+
+	copy(slice[idx:], slice[idx+1:]) // Shift slice[idx+1:] left one index.
+	slice[len(slice)-1] = ""         // Erase last element (write zero value).
+	return slice[:len(slice)-1]      // Truncate slice.
 }
 
 // findIndexByItem return index belong to the key
 // Source: https://stackoverflow.com/questions/46745043/performance-of-for-range-in-go
-func findIndexByItem(keyName string, items []string) (int, bool) {
+func findIndexByItem(
+	keyName string,
+	items []string) (int, bool) {
+
 	for index := range items {
 		if keyName == items[index] {
 			return index, true
