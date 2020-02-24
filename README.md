@@ -4,4 +4,4 @@
 ![Linear](images/linear.png)
 
 ## Note
-[Check this template for more information and know how to use this package](https://github.com/golang-microservices/caching)
+[Check this template for more information and know how to use this package](https://github.com/golang-common-packages/caching)
