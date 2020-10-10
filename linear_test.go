@@ -184,3 +184,35 @@ func TestUpdate(t *testing.T) {
 
 	assert.Equal(linearClient.GetNumberOfKeys(), 3)
 }
+
+func BenchmarkPush(b *testing.B) {
+
+	linearClient := New(1024, false)
+
+	// run the Push method b.N times
+	for n := 0; n < b.N; n++ {
+		linearClient.Push("1", "a")
+	}
+}
+
+func BenchmarkRead(b *testing.B) {
+
+	// Setting up
+	datas := []struct {
+		key   string
+		value string
+	}{
+		{"1", "a"},
+	}
+
+	linearClient := New(1024, false)
+
+	for _, data := range datas {
+		linearClient.Push(data.key, data.value)
+	}
+
+	// run the Read method b.N times
+	for n := 0; n < b.N; n++ {
+		linearClient.Read("1")
+	}
+}

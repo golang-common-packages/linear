@@ -3,5 +3,13 @@
 
 ![Linear](images/linear.png)
 
+## Unit test
+
+`go test -v`
+
+## Benchmark
+
+`go test -bench=. -benchmem -benchtime=20s`
+
 ## Note
 [Take a look this repository for more information and how to use this package](https://github.com/golang-common-packages/storage)
