@@ -33,7 +33,7 @@ func TestPush(t *testing.T) {
 func TestPop(t *testing.T) {
 	assert := assert.New(t)
 
-	// Setup for instance
+	// Setting up
 	datas := []struct {
 		key   string
 		value string
@@ -63,7 +63,7 @@ func TestPop(t *testing.T) {
 func TestTake(t *testing.T) {
 	assert := assert.New(t)
 
-	// Setup for instance
+	// Setting up
 	datas := []struct {
 		key   string
 		value string
@@ -93,7 +93,7 @@ func TestTake(t *testing.T) {
 func TestGet(t *testing.T) {
 	assert := assert.New(t)
 
-	// Setup for instance
+	// Setting up
 	datas := []struct {
 		key   string
 		value string
@@ -123,7 +123,7 @@ func TestGet(t *testing.T) {
 func TestRead(t *testing.T) {
 	assert := assert.New(t)
 
-	// Setup for instance
+	// Setting up
 	datas := []struct {
 		key   string
 		value string
@@ -153,7 +153,7 @@ func TestRead(t *testing.T) {
 func TestUpdate(t *testing.T) {
 	assert := assert.New(t)
 
-	// Setup for instance
+	// Setting up
 	datas := []struct {
 		key   string
 		value string
