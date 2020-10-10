@@ -82,7 +82,7 @@ func TestTake(t *testing.T) {
 	// Testing
 	value, err := linearClient.Take()
 	if err != nil {
-		t.Errorf("Pop failed, expected %v, got %v", "a", err)
+		t.Errorf("Take failed, expected %v, got %v", "a", err)
 	}
 
 	assert.Equal(value, "a")
@@ -112,7 +112,7 @@ func TestGet(t *testing.T) {
 	// Testing
 	value, err := linearClient.Get("2")
 	if err != nil {
-		t.Errorf("Pop failed, expected %v, got %v", "b", err)
+		t.Errorf("Get failed, expected %v, got %v", "b", err)
 	}
 
 	assert.Equal(value, "b")
@@ -142,7 +142,7 @@ func TestRead(t *testing.T) {
 	// Testing
 	value, err := linearClient.Read("1")
 	if err != nil {
-		t.Errorf("Pop failed, expected %v, got %v", "a", err)
+		t.Errorf("Read failed, expected %v, got %v", "a", err)
 	}
 
 	assert.Equal(value, "a")
@@ -172,12 +172,12 @@ func TestUpdate(t *testing.T) {
 	// Testing
 	err := linearClient.Update("2", "b2")
 	if err != nil {
-		t.Errorf("Pop failed, expected %v, got %v", "b2", err)
+		t.Errorf("Update failed, expected %v, got %v", "b2", err)
 	}
 
 	value, err := linearClient.Read("2")
 	if err != nil {
-		t.Errorf("Pop failed, expected %v, got %v", "b2", err)
+		t.Errorf("Update failed, expected %v, got %v", "b2", err)
 	}
 
 	assert.Equal(value, "b2")
