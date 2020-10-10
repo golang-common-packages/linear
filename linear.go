@@ -7,157 +7,153 @@ import (
 	"unsafe"
 )
 
-// Client contains all the properties
-type Client struct {
-	items              sync.Map
-	keys               []string
-	sizeChecker        bool
-	linearSizes        int64
-	linearCurrentSizes int64
-	rwMutex            sync.RWMutex
+// Linear contains all the private properties
+type Linear struct {
+	items             *sync.Map
+	keys              []string
+	sizeChecker       bool
+	linearSizes       int64
+	linearCurrentSize int64
+	rwMutex           sync.RWMutex
 }
 
 // New return new linear instance
-func New(
-	linearSizes int64,
-	sizeChecker bool) *Client {
+func New(maxSize int64, sizeChecker bool) *Linear {
 
 	// Argument validator
-	if linearSizes <= 0 {
-		log.Println("linearSizes much higher than 0")
-		panic(errors.New("linearSizes much higher than 0"))
+	if maxSize <= 0 {
+		log.Fatalln("linearSizes much higher than 0")
 	}
 
-	currentLinear := Client{
-		keys:               []string{},
-		items:              sync.Map{},
-		sizeChecker:        sizeChecker,
-		linearSizes:        linearSizes,
-		linearCurrentSizes: 0,
-		rwMutex:            sync.RWMutex{},
+	currentLinear := Linear{
+		keys:              []string{},
+		items:             &sync.Map{},
+		sizeChecker:       sizeChecker,
+		linearSizes:       maxSize,
+		linearCurrentSize: 0,
+		rwMutex:           sync.RWMutex{},
 	}
 
 	return &currentLinear
 }
 
-// Push item to the linear by key
-func (c *Client) Push(
-	key string,
-	value interface{}) error {
+// Push item to the linear with key
+func (l *Linear) Push(key string, value interface{}) error {
 
 	// Argument validator
 	if key == "" && value == nil {
-		log.Println("key and value much not empty")
-		panic(errors.New("key and value much not empty"))
+		return errors.New("Key and value cannot be empty")
 	}
 
 	itemSize := int64(unsafe.Sizeof(key)) + int64(unsafe.Sizeof(value))
-	if itemSize > c.linearSizes || key == "" {
-		return errors.New("key is empty or linear not enough space")
+	if itemSize > l.linearSizes {
+		return errors.New("Linear doesn't have enough memory space")
 	}
 
 	// Clean space for new item
-	if c.sizeChecker {
-		for c.linearCurrentSizes+itemSize > c.linearSizes {
-			c.Take()
+	if l.sizeChecker {
+		for l.linearCurrentSize+itemSize > l.linearSizes {
+			if _, err := l.Take(); err != nil {
+				return err
+			}
 		}
 	}
 
-	c.rwMutex.Lock()
-	c.items.LoadOrStore(key, value)
-	c.linearCurrentSizes += int64(unsafe.Sizeof(value))
-	c.keys = append(c.keys, key)
-	c.rwMutex.Unlock()
+	l.rwMutex.Lock()
+	l.items.LoadOrStore(key, value)
+	l.linearCurrentSize += itemSize
+	l.keys = append(l.keys, key)
+	l.rwMutex.Unlock()
 
 	return nil
 }
 
-// Pop return the last item from the linear and remove it
-func (c *Client) Pop() (interface{}, error) {
+// Pop return the last item from the linear and remove it out of Linear
+func (l *Linear) Pop() (interface{}, error) {
 	// Execution conditions
-	if c.IsEmpty() {
-		return nil, errors.New("the linear is empty")
+	if l.IsEmpty() {
+		return nil, errors.New("Linear is empty")
 	}
 
-	lastItemIndex := len(c.keys) - 1
-	item, exits := c.items.Load(c.keys[lastItemIndex])
-	if !exits {
+	lastItemIndex := len(l.keys) - 1
+	item, ok := l.items.Load(l.keys[lastItemIndex])
+	if !ok {
 		return nil, nil
 	}
 
-	c.rwMutex.Lock()
-	c.items.Delete(c.keys[lastItemIndex])
-	c.linearCurrentSizes -= int64(unsafe.Sizeof(item))
-	c.keys = removeItemByIndex(c.keys, lastItemIndex) //Update keys slice after remove that key from items map
-	c.rwMutex.Unlock()
+	itemSize := int64(unsafe.Sizeof(item)) + int64(unsafe.Sizeof(l.keys[lastItemIndex]))
+
+	l.rwMutex.Lock()
+	l.items.Delete(l.keys[lastItemIndex])
+	l.linearCurrentSize -= itemSize
+	l.keys = removeItemByIndex(l.keys, lastItemIndex) //Update keys slice after remove that key/value from items map
+	l.rwMutex.Unlock()
 
 	return item, nil
 }
 
 // Take return the first item from the linear and remove it
-func (c *Client) Take() (interface{}, error) {
+func (l *Linear) Take() (interface{}, error) {
 	// Execution conditions
-	if c.IsEmpty() {
-		return nil, errors.New("the linear is empty")
+	if l.IsEmpty() {
+		return nil, errors.New("Can't Take, because Linear is empty")
 	}
 
-	c.rwMutex.Lock()
-	item, exits := c.items.Load(c.keys[0])
-	if !exits {
-		c.rwMutex.Unlock()
+	item, ok := l.items.Load(l.keys[0])
+	if !ok {
 		return nil, nil
 	}
 
-	c.items.Delete(c.keys[0])
-	c.linearCurrentSizes -= int64(unsafe.Sizeof(item))
-	c.keys = removeItemByIndex(c.keys, 0) //Update keys slice after remove that key from items map
-	c.rwMutex.Unlock()
+	itemSize := int64(unsafe.Sizeof(item)) + int64(unsafe.Sizeof(l.keys[0]))
+
+	l.rwMutex.Lock()
+	l.items.Delete(l.keys[0])
+	l.linearCurrentSize -= itemSize
+	l.keys = removeItemByIndex(l.keys, 0) //Update keys slice after remove that key/value from items map
+	l.rwMutex.Unlock()
 
 	return item, nil
 }
 
 // Get method return the item by key from linear and remove it
 // Goroutine: https://stackoverflow.com/questions/20945069/catching-return-values-from-goroutines
-func (c *Client) Get(
-	key string) (interface{}, error) {
+func (l *Linear) Get(key string) (interface{}, error) {
 
 	// Argument validator
 	if key == "" {
-		log.Println("key much not empty")
-		panic(errors.New("key much not empty"))
+		return nil, errors.New("key much not empty")
 	}
 
 	// Execution conditions
-	if c.IsEmpty() {
+	if l.IsEmpty() {
 		return nil, errors.New("linear is empty")
 	}
 
 	var (
-		wg             sync.WaitGroup
-		item           interface{}
-		itemExits      bool
-		itemIndex      int
-		itemIndexExits bool
+		wg        sync.WaitGroup
+		item      interface{}
+		itemIndex int
+		itemExits bool
 	)
 
 	wg.Add(2)
 	go func() {
-		item, itemExits = c.items.Load(key)
+		item, itemExits = l.items.Load(key)
 		wg.Done()
 	}()
 
 	go func() {
-		itemIndex, itemIndexExits = findIndexByItem(key, c.keys)
+		itemIndex, itemExits = findIndexByItem(key, l.keys)
 		wg.Done()
 	}()
 	wg.Wait()
 
-	if itemExits && itemIndexExits {
-		c.rwMutex.Lock()
-		c.items.Delete(key)
-		c.linearCurrentSizes -= int64(unsafe.Sizeof(item))
-		c.keys = removeItemByIndex(c.keys, itemIndex) //Update keys slice after remove that key from items map
-		c.rwMutex.Unlock()
+	if itemExits {
+		l.rwMutex.Lock()
+		l.items.Delete(key)
+		l.linearCurrentSize -= int64(unsafe.Sizeof(item))
+		l.keys = removeItemByIndex(l.keys, itemIndex) //Update keys slice after remove that key from items map
+		l.rwMutex.Unlock()
 
 		return item, nil
 	}
@@ -166,21 +162,19 @@ func (c *Client) Get(
 }
 
 // Read method return the item by key from linear without remove it
-func (c *Client) Read(
-	key string) (interface{}, error) {
+func (l *Linear) Read(key string) (interface{}, error) {
 
 	// Argument validator
 	if key == "" {
-		log.Println("key much not empty")
-		panic(errors.New("key much not empty"))
+		return nil, errors.New("key much not empty")
 	}
 
 	// Execution conditions
-	if c.IsEmpty() {
+	if l.IsEmpty() {
 		return nil, errors.New("linear is empty")
 	}
 
-	item, exits := c.items.Load(key)
+	item, exits := l.items.Load(key)
 	if !exits {
 		return nil, nil
 	}
@@ -189,55 +183,44 @@ func (c *Client) Read(
 }
 
 // Update reassign value to the key
-func (c *Client) Update(
-	key string,
-	value interface{}) error {
+func (l *Linear) Update(key string, value interface{}) error {
 
 	// Argument validator
 	if key == "" && value == nil {
-		log.Println("key and value much not empty")
-		panic(errors.New("key and value much not empty"))
+		return errors.New("key and value much not empty")
 	}
 
 	// Execution conditions
-	if c.IsEmpty() {
+	if l.IsEmpty() {
 		return errors.New("linear is empty")
 	}
 
 	newItemSize := int64(unsafe.Sizeof(key)) + int64(unsafe.Sizeof(value))
-	if newItemSize > c.linearSizes || c.IsEmpty() {
+	if newItemSize > l.linearSizes || l.IsEmpty() {
 		return errors.New("linear is empty or not enough space")
 	}
 
-	c.rwMutex.Lock()
-	currentSize, exits := c.IsExits(key)
+	l.rwMutex.Lock()
+	currentSize, exits := l.IsExits(key)
 	if !exits {
-		c.rwMutex.Unlock()
+		l.rwMutex.Unlock()
 		return errors.New("key does not exit")
 	}
-	c.items.Store(key, value)
-	c.linearCurrentSizes += currentSize - newItemSize
-	c.rwMutex.Unlock()
+	l.items.Store(key, value)
+	l.linearCurrentSize += currentSize - newItemSize
+	l.rwMutex.Unlock()
 
 	return nil
 }
 
 // Range the LinearClient
-func (c *Client) Range(fn func(key, value interface{}) bool) {
-	c.items.Range(fn)
+func (l *Linear) Range(fn func(key, value interface{}) bool) {
+	l.items.Range(fn)
 }
 
 // IsExits check key exits or not
-func (c *Client) IsExits(
-	key string) (int64, bool) {
-
-	// Argument validator
-	if key == "" {
-		log.Println("key much not empty")
-		panic(errors.New("key much not empty"))
-	}
-
-	value, exits := c.items.Load(key)
+func (l *Linear) IsExits(key string) (int64, bool) {
+	value, exits := l.items.Load(key)
 	if !exits {
 		return 0, false
 	}
@@ -246,55 +229,53 @@ func (c *Client) IsExits(
 }
 
 // IsEmpty check linear size
-func (c *Client) IsEmpty() bool {
-	return len(c.keys) == 0
+func (l *Linear) IsEmpty() bool {
+	return len(l.keys) == 0
 }
 
 // GetItems return the map contain items
-func (c *Client) GetItems() sync.Map {
-	return c.items
+func (l *Linear) GetItems() *sync.Map {
+	return l.items
 }
 
 // Getkeys return the list of key
-func (c *Client) Getkeys() []string {
-	return c.keys
+func (l *Linear) Getkeys() []string {
+	return l.keys
 }
 
 // GetNumberOfKeys return the number of keys
-func (c *Client) GetNumberOfKeys() int {
-	return len(c.keys)
+func (l *Linear) GetNumberOfKeys() int {
+	return len(l.keys)
 }
 
 // GetLinearSizes return the linear size
-func (c *Client) GetLinearSizes() int64 {
-	return c.linearSizes
+func (l *Linear) GetLinearSizes() int64 {
+	return l.linearSizes
 }
 
 // SetLinearSizes change the linear size with new value
-func (c *Client) SetLinearSizes(
-	linearSizes int64) {
+func (l *Linear) SetLinearSizes(linearSizes int64) error {
 
 	// Argument validator
 	if linearSizes <= 0 {
-		log.Println("linearSizes much higher than 0")
-		panic(errors.New("linearSizes much higher than 0"))
+		return errors.New("linearSizes much higher than 0")
 	}
 
-	c.rwMutex.RLock()
-	c.linearSizes = linearSizes
-	c.rwMutex.RUnlock()
+	l.rwMutex.RLock()
+	l.linearSizes = linearSizes
+	l.rwMutex.RUnlock()
+
+	return nil
 }
 
 // GetLinearCurrentSize return the current linear size
-func (c *Client) GetLinearCurrentSize() int64 {
-	return c.linearCurrentSizes
+func (l *Linear) GetLinearCurrentSize() int64 {
+	return l.linearCurrentSize
 }
 
 // removeItemByIndex remove item out of []string by index but maintains order, and return the new one
 // Source: https://yourbasic.org/golang/delete-element-slice/
-func removeItemByIndex(
-	slice []string,
-	idx int) []string {
+func removeItemByIndex(slice []string, idx int) []string {
 
 	copy(slice[idx:], slice[idx+1:]) // Shift slice[idx+1:] left one index.
 	slice[len(slice)-1] = ""         // Erase last element (write zero value).
@@ -303,9 +284,7 @@ func removeItemByIndex(
 
 // findIndexByItem return index belong to the key
 // Source: https://stackoverflow.com/questions/46745043/performance-of-for-range-in-go
-func findIndexByItem(
-	keyName string,
-	items []string) (int, bool) {
+func findIndexByItem(keyName string, items []string) (int, bool) {
 
 	for index := range items {
 		if keyName == items[index] {
