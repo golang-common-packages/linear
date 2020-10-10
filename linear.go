@@ -12,8 +12,8 @@ type Linear struct {
 	items             *sync.Map
 	keys              []string
 	sizeChecker       bool
-	linearSizes       int64
-	linearCurrentSize int64
+	linearSizes       int64 // bytes
+	linearCurrentSize int64 // bytes
 	rwMutex           *sync.RWMutex
 }
 
@@ -84,8 +84,8 @@ func (l *Linear) Pop() (interface{}, error) {
 
 	itemSize := int64(unsafe.Sizeof(item)) + int64(unsafe.Sizeof(l.keys[lastItemIndex]))
 
-	l.rwMutex.Lock()
 	l.items.Delete(l.keys[lastItemIndex])
+	l.rwMutex.Lock()
 	l.linearCurrentSize -= itemSize
 	l.keys = removeItemByIndex(l.keys, lastItemIndex) //Update keys slice after remove that key/value from items map
 	l.rwMutex.Unlock()
@@ -108,8 +108,8 @@ func (l *Linear) Take() (interface{}, error) {
 
 	itemSize := int64(unsafe.Sizeof(item)) + int64(unsafe.Sizeof(l.keys[0]))
 
-	l.rwMutex.Lock()
 	l.items.Delete(l.keys[0])
+	l.rwMutex.Lock()
 	l.linearCurrentSize -= itemSize
 	l.keys = removeItemByIndex(l.keys, 0) //Update keys slice after remove that key/value from items map
 	l.rwMutex.Unlock()
@@ -149,8 +149,8 @@ func (l *Linear) Get(key string) (interface{}, error) {
 		return nil, nil
 	}
 
-	l.rwMutex.Lock()
 	l.items.Delete(key)
+	l.rwMutex.Lock()
 	l.linearCurrentSize -= int64(unsafe.Sizeof(item))
 	l.keys = removeItemByIndex(l.keys, itemIndex) //Update keys slice after remove that key from items map
 	l.rwMutex.Unlock()
@@ -166,8 +166,8 @@ func (l *Linear) Read(key string) (interface{}, error) {
 		return nil, errors.New("Linear is empty")
 	}
 
-	item, exits := l.items.Load(key)
-	if !exits {
+	item, ok := l.items.Load(key)
+	if !ok {
 		return nil, nil
 	}
 
@@ -199,7 +199,8 @@ func (l *Linear) Update(key string, value interface{}) error {
 		return errors.New("Key does not exit")
 	}
 	l.items.Store(key, value)
-	l.linearCurrentSize += currentSize - newItemSize
+	l.linearCurrentSize -= currentSize
+	l.linearCurrentSize += newItemSize
 	l.rwMutex.Unlock()
 
 	return nil
@@ -264,26 +265,4 @@ func (l *Linear) SetLinearSizes(linearSizes int64) error {
 // GetLinearCurrentSize return the current linear size
 func (l *Linear) GetLinearCurrentSize() int64 {
 	return l.linearCurrentSize
-}
-
-// removeItemByIndex remove item out of []string by index but maintains order, and return the new one
-// Source: https://yourbasic.org/golang/delete-element-slice/
-func removeItemByIndex(slice []string, idx int) []string {
-
-	copy(slice[idx:], slice[idx+1:]) // Shift slice[idx+1:] left one index.
-	slice[len(slice)-1] = ""         // Erase last element (write zero value).
-	return slice[:len(slice)-1]      // Truncate slice.
-}
-
-// findIndexByItem return index belong to the key
-// Source: https://stackoverflow.com/questions/46745043/performance-of-for-range-in-go
-func findIndexByItem(keyName string, items []string) (int, bool) {
-
-	for index := range items {
-		if keyName == items[index] {
-			return index, true
-		}
-	}
-
-	return -1, false
 }

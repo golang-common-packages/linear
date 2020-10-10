@@ -187,9 +187,9 @@ func TestUpdate(t *testing.T) {
 
 func BenchmarkPush(b *testing.B) {
 
-	linearClient := New(1024, false)
+	linearClient := New(1000000, true)
 
-	// run the Push method b.N times
+	// Run the Push method b.N times
 	for n := 0; n < b.N; n++ {
 		linearClient.Push("1", "a")
 	}
@@ -198,20 +198,10 @@ func BenchmarkPush(b *testing.B) {
 func BenchmarkRead(b *testing.B) {
 
 	// Setting up
-	datas := []struct {
-		key   string
-		value string
-	}{
-		{"1", "a"},
-	}
+	linearClient := New(1000000, true)
+	New(1024, false).Push("1", "a")
 
-	linearClient := New(1024, false)
-
-	for _, data := range datas {
-		linearClient.Push(data.key, data.value)
-	}
-
-	// run the Read method b.N times
+	// Run the Read method b.N times
 	for n := 0; n < b.N; n++ {
 		linearClient.Read("1")
 	}
