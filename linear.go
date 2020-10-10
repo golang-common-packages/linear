@@ -14,7 +14,7 @@ type Linear struct {
 	sizeChecker       bool
 	linearSizes       int64
 	linearCurrentSize int64
-	rwMutex           sync.RWMutex
+	rwMutex           *sync.RWMutex
 }
 
 // New return new linear instance
@@ -31,7 +31,7 @@ func New(maxSize int64, sizeChecker bool) *Linear {
 		sizeChecker:       sizeChecker,
 		linearSizes:       maxSize,
 		linearCurrentSize: 0,
-		rwMutex:           sync.RWMutex{},
+		rwMutex:           &sync.RWMutex{},
 	}
 
 	return &currentLinear
@@ -42,7 +42,7 @@ func (l *Linear) Push(key string, value interface{}) error {
 
 	// Argument validator
 	if key == "" && value == nil {
-		return errors.New("Key and value cannot be empty")
+		return errors.New("Key and value should not be empty")
 	}
 
 	itemSize := int64(unsafe.Sizeof(key)) + int64(unsafe.Sizeof(value))
@@ -70,6 +70,7 @@ func (l *Linear) Push(key string, value interface{}) error {
 
 // Pop return the last item from the linear and remove it out of Linear
 func (l *Linear) Pop() (interface{}, error) {
+
 	// Execution conditions
 	if l.IsEmpty() {
 		return nil, errors.New("Linear is empty")
@@ -94,6 +95,7 @@ func (l *Linear) Pop() (interface{}, error) {
 
 // Take return the first item from the linear and remove it
 func (l *Linear) Take() (interface{}, error) {
+
 	// Execution conditions
 	if l.IsEmpty() {
 		return nil, errors.New("Can't Take, because Linear is empty")
@@ -116,24 +118,19 @@ func (l *Linear) Take() (interface{}, error) {
 }
 
 // Get method return the item by key from linear and remove it
-// Goroutine: https://stackoverflow.com/questions/20945069/catching-return-values-from-goroutines
 func (l *Linear) Get(key string) (interface{}, error) {
-
-	// Argument validator
-	if key == "" {
-		return nil, errors.New("key much not empty")
-	}
 
 	// Execution conditions
 	if l.IsEmpty() {
-		return nil, errors.New("linear is empty")
+		return nil, errors.New("Linear is empty")
 	}
 
 	var (
-		wg        sync.WaitGroup
-		item      interface{}
-		itemIndex int
-		itemExits bool
+		wg             sync.WaitGroup
+		item           interface{}
+		itemExits      bool
+		itemIndex      int
+		itemIndexExits bool
 	)
 
 	wg.Add(2)
@@ -143,35 +140,30 @@ func (l *Linear) Get(key string) (interface{}, error) {
 	}()
 
 	go func() {
-		itemIndex, itemExits = findIndexByItem(key, l.keys)
+		itemIndex, itemIndexExits = findIndexByItem(key, l.keys)
 		wg.Done()
 	}()
 	wg.Wait()
 
-	if itemExits {
-		l.rwMutex.Lock()
-		l.items.Delete(key)
-		l.linearCurrentSize -= int64(unsafe.Sizeof(item))
-		l.keys = removeItemByIndex(l.keys, itemIndex) //Update keys slice after remove that key from items map
-		l.rwMutex.Unlock()
-
-		return item, nil
+	if !itemExits || !itemIndexExits {
+		return nil, nil
 	}
 
-	return nil, nil
+	l.rwMutex.Lock()
+	l.items.Delete(key)
+	l.linearCurrentSize -= int64(unsafe.Sizeof(item))
+	l.keys = removeItemByIndex(l.keys, itemIndex) //Update keys slice after remove that key from items map
+	l.rwMutex.Unlock()
+
+	return item, nil
 }
 
 // Read method return the item by key from linear without remove it
 func (l *Linear) Read(key string) (interface{}, error) {
 
-	// Argument validator
-	if key == "" {
-		return nil, errors.New("key much not empty")
-	}
-
 	// Execution conditions
 	if l.IsEmpty() {
-		return nil, errors.New("linear is empty")
+		return nil, errors.New("Linear is empty")
 	}
 
 	item, exits := l.items.Load(key)
@@ -187,24 +179,24 @@ func (l *Linear) Update(key string, value interface{}) error {
 
 	// Argument validator
 	if key == "" && value == nil {
-		return errors.New("key and value much not empty")
+		return errors.New("key and value should not be empty")
 	}
 
 	// Execution conditions
 	if l.IsEmpty() {
-		return errors.New("linear is empty")
+		return errors.New("Linear is empty")
 	}
 
 	newItemSize := int64(unsafe.Sizeof(key)) + int64(unsafe.Sizeof(value))
 	if newItemSize > l.linearSizes || l.IsEmpty() {
-		return errors.New("linear is empty or not enough space")
+		return errors.New("Linear is empty or not enough space")
 	}
 
 	l.rwMutex.Lock()
 	currentSize, exits := l.IsExits(key)
 	if !exits {
 		l.rwMutex.Unlock()
-		return errors.New("key does not exit")
+		return errors.New("Key does not exit")
 	}
 	l.items.Store(key, value)
 	l.linearCurrentSize += currentSize - newItemSize
@@ -220,6 +212,7 @@ func (l *Linear) Range(fn func(key, value interface{}) bool) {
 
 // IsExits check key exits or not
 func (l *Linear) IsExits(key string) (int64, bool) {
+
 	value, exits := l.items.Load(key)
 	if !exits {
 		return 0, false
