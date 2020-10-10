@@ -26,6 +26,8 @@ func TestPush(t *testing.T) {
 	for _, test := range tests {
 		assert.Equal(linearClient.Push(test.key, test.value), test.expected)
 	}
+
+	assert.Equal(linearClient.GetNumberOfKeys(), 5)
 }
 
 func TestPop(t *testing.T) {
