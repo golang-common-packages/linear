@@ -14,7 +14,7 @@ type Linear struct {
 	sizeChecker       bool
 	linearSizes       int64 // bytes
 	linearCurrentSize int64 // bytes
-	rwMutex           *sync.RWMutex
+	mux               *sync.RWMutex
 }
 
 // New return new linear instance
@@ -31,7 +31,7 @@ func New(maxSize int64, sizeChecker bool) *Linear {
 		sizeChecker:       sizeChecker,
 		linearSizes:       maxSize,
 		linearCurrentSize: 0,
-		rwMutex:           &sync.RWMutex{},
+		mux:               &sync.RWMutex{},
 	}
 
 	return &currentLinear
@@ -42,12 +42,12 @@ func (l *Linear) Push(key string, value interface{}) error {
 
 	// Argument validator
 	if key == "" && value == nil {
-		return errors.New("Key and value should not be empty")
+		return errors.New("key and value should not be empty")
 	}
 
 	itemSize := int64(unsafe.Sizeof(key)) + int64(unsafe.Sizeof(value))
 	if itemSize > l.linearSizes {
-		return errors.New("Linear doesn't have enough memory space")
+		return errors.New("linear doesn't have enough memory space")
 	}
 
 	// Clean space for new item
@@ -59,21 +59,21 @@ func (l *Linear) Push(key string, value interface{}) error {
 		}
 	}
 
-	l.rwMutex.Lock()
 	l.items.LoadOrStore(key, value)
+	l.mux.Lock()
 	l.linearCurrentSize += itemSize
 	l.keys = append(l.keys, key)
-	l.rwMutex.Unlock()
+	l.mux.Unlock()
 
 	return nil
 }
 
-// Pop return the last item from the linear and remove it out of Linear
+// Pop return and remove the last item out of the linear
 func (l *Linear) Pop() (interface{}, error) {
 
 	// Execution conditions
 	if l.IsEmpty() {
-		return nil, errors.New("Linear is empty")
+		return nil, errors.New("linear is empty")
 	}
 
 	lastItemIndex := len(l.keys) - 1
@@ -85,20 +85,20 @@ func (l *Linear) Pop() (interface{}, error) {
 	itemSize := int64(unsafe.Sizeof(item)) + int64(unsafe.Sizeof(l.keys[lastItemIndex]))
 
 	l.items.Delete(l.keys[lastItemIndex])
-	l.rwMutex.Lock()
+	l.mux.Lock()
 	l.linearCurrentSize -= itemSize
-	l.keys = removeItemByIndex(l.keys, lastItemIndex) //Update keys slice after remove that key/value from items map
-	l.rwMutex.Unlock()
+	l.keys = removeItemByIndex(l.keys, lastItemIndex) //Update keys slice after remove that key out of the map
+	l.mux.Unlock()
 
 	return item, nil
 }
 
-// Take return the first item from the linear and remove it
+// Take return and remove the first item out of the linear
 func (l *Linear) Take() (interface{}, error) {
 
 	// Execution conditions
 	if l.IsEmpty() {
-		return nil, errors.New("Can't Take, because Linear is empty")
+		return nil, errors.New("can't take, because linear is empty")
 	}
 
 	item, ok := l.items.Load(l.keys[0])
@@ -109,20 +109,20 @@ func (l *Linear) Take() (interface{}, error) {
 	itemSize := int64(unsafe.Sizeof(item)) + int64(unsafe.Sizeof(l.keys[0]))
 
 	l.items.Delete(l.keys[0])
-	l.rwMutex.Lock()
+	l.mux.Lock()
 	l.linearCurrentSize -= itemSize
 	l.keys = removeItemByIndex(l.keys, 0) //Update keys slice after remove that key/value from items map
-	l.rwMutex.Unlock()
+	l.mux.Unlock()
 
 	return item, nil
 }
 
-// Get method return the item by key from linear and remove it
+// Get method return and remove the item by key out of the linear
 func (l *Linear) Get(key string) (interface{}, error) {
 
 	// Execution conditions
 	if l.IsEmpty() {
-		return nil, errors.New("Linear is empty")
+		return nil, errors.New("linear is empty")
 	}
 
 	var (
@@ -150,10 +150,10 @@ func (l *Linear) Get(key string) (interface{}, error) {
 	}
 
 	l.items.Delete(key)
-	l.rwMutex.Lock()
+	l.mux.Lock()
 	l.linearCurrentSize -= int64(unsafe.Sizeof(item))
 	l.keys = removeItemByIndex(l.keys, itemIndex) //Update keys slice after remove that key from items map
-	l.rwMutex.Unlock()
+	l.mux.Unlock()
 
 	return item, nil
 }
@@ -163,7 +163,7 @@ func (l *Linear) Read(key string) (interface{}, error) {
 
 	// Execution conditions
 	if l.IsEmpty() {
-		return nil, errors.New("Linear is empty")
+		return nil, errors.New("linear is empty")
 	}
 
 	item, ok := l.items.Load(key)
@@ -184,24 +184,24 @@ func (l *Linear) Update(key string, value interface{}) error {
 
 	// Execution conditions
 	if l.IsEmpty() {
-		return errors.New("Linear is empty")
+		return errors.New("linear is empty")
 	}
 
 	newItemSize := int64(unsafe.Sizeof(key)) + int64(unsafe.Sizeof(value))
 	if newItemSize > l.linearSizes || l.IsEmpty() {
-		return errors.New("Linear is empty or not enough space")
+		return errors.New("linear is empty or not enough space")
 	}
 
-	l.rwMutex.Lock()
 	currentSize, exits := l.IsExits(key)
 	if !exits {
-		l.rwMutex.Unlock()
-		return errors.New("Key does not exit")
+		return errors.New("key does not exit")
 	}
+
 	l.items.Store(key, value)
+	l.mux.Lock()
 	l.linearCurrentSize -= currentSize
 	l.linearCurrentSize += newItemSize
-	l.rwMutex.Unlock()
+	l.mux.Unlock()
 
 	return nil
 }
@@ -211,7 +211,7 @@ func (l *Linear) Range(fn func(key, value interface{}) bool) {
 	l.items.Range(fn)
 }
 
-// IsExits check key exits or not
+// IsExits check key exits or not and return size and status
 func (l *Linear) IsExits(key string) (int64, bool) {
 
 	value, exits := l.items.Load(key)
@@ -255,14 +255,19 @@ func (l *Linear) SetLinearSizes(linearSizes int64) error {
 		return errors.New("linearSizes much higher than 0")
 	}
 
-	l.rwMutex.RLock()
+	l.mux.Lock()
 	l.linearSizes = linearSizes
-	l.rwMutex.RUnlock()
+	l.mux.Unlock()
 
 	return nil
 }
 
 // GetLinearCurrentSize return the current linear size
 func (l *Linear) GetLinearCurrentSize() int64 {
-	return l.linearCurrentSize
+
+	l.mux.RLock()
+	currentSize := l.linearCurrentSize
+	l.mux.RUnlock()
+
+	return currentSize
 }

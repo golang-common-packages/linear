@@ -198,8 +198,8 @@ func BenchmarkPush(b *testing.B) {
 func BenchmarkRead(b *testing.B) {
 
 	// Setting up
-	linearClient := New(1000000, true)
-	New(1024, false).Push("1", "a")
+	linearClient := New(1, false)
+	linearClient.Push("1", "a")
 
 	// Run the Read method b.N times
 	for n := 0; n < b.N; n++ {

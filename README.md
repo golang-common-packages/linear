@@ -14,7 +14,7 @@ go test -v
 ## Benchmark
 
 ```bash
-go test -bench=. -benchmem -benchtime=20s
+go test -bench=. -benchmem -benchtime=30s
 ```
 
 ## Note
