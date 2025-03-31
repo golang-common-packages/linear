@@ -1,6 +1,8 @@
 package linear
 
 import (
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -196,13 +198,80 @@ func BenchmarkPush(b *testing.B) {
 }
 
 func BenchmarkRead(b *testing.B) {
-
-	// Setting up
 	linearClient := New(1, false)
 	linearClient.Push("1", "a")
 
-	// Run the Read method b.N times
 	for n := 0; n < b.N; n++ {
 		linearClient.Read("1")
 	}
+}
+
+func TestConcurrentAccess(t *testing.T) {
+	assert := assert.New(t)
+	linearClient := New(1000000, true)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			key := string(rune('a' + i))
+			assert.Nil(linearClient.Push(key, "value"))
+			_, err := linearClient.Pop()
+			assert.Nil(err)
+		}(i)
+	}
+	wg.Wait()
+}
+
+func TestFullCapacity(t *testing.T) {
+	assert := assert.New(t)
+	linearClient := New(100, true) // Small capacity
+
+	for i := 0; i < 10; i++ {
+		assert.Nil(linearClient.Push(string(rune('a'+i)), strings.Repeat("x", 10)))
+	}
+
+	// Next push should trigger Take() automatically
+	assert.Nil(linearClient.Push("k", "value"))
+	assert.Equal(10, linearClient.GetNumberOfKeys())
+}
+
+func TestComplexData(t *testing.T) {
+	assert := assert.New(t)
+	linearClient := New(1000000, false)
+
+	type complexStruct struct {
+		ID    int
+		Name  string
+		Items []string
+	}
+
+	val := complexStruct{
+		ID:    1,
+		Name:  "test",
+		Items: []string{"a", "b", "c"},
+	}
+
+	assert.Nil(linearClient.Push("complex", val))
+	result, err := linearClient.Get("complex")
+	assert.Nil(err)
+	assert.Equal(val, result)
+}
+
+func TestErrorCases(t *testing.T) {
+	assert := assert.New(t)
+	linearClient := New(100, false)
+
+	// Empty key
+	err := linearClient.Push("", "value")
+	assert.Error(err)
+
+	// Nil value
+	err = linearClient.Push("key", nil)
+	assert.Error(err)
+
+	// Get from empty
+	_, err = linearClient.Pop()
+	assert.Error(err)
 }
