@@ -23,11 +23,6 @@ Import the package in your Go code:
 import "github.com/golang-common-packages/linear"
 ```
 
-Basic example:
-```go
-// TODO: Add example usage code
-```
-
 ## Documentation
 Full API documentation is available on [pkg.go.dev](https://pkg.go.dev/github.com/golang-common-packages/linear).
 
