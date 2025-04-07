@@ -12,16 +12,16 @@ type Linear struct {
 	keys        []string
 	sizeChecker bool
 	linearSizes int64
-	
+
 	// Separate locks for different resources
-	sizeMux sync.RWMutex
-	keysMux sync.RWMutex
+	sizeMux           sync.RWMutex
+	keysMux           sync.RWMutex
 	linearCurrentSize int64
 }
 
 func (l *Linear) calculateItemSize(key string, value interface{}) int64 {
 	size := int64(len(key))
-	
+
 	v := reflect.ValueOf(value)
 	switch v.Kind() {
 	case reflect.String:
@@ -42,16 +42,16 @@ func New(maxSize int64, sizeChecker bool) *Linear {
 	}
 
 	return &Linear{
-		keys:        make([]string, 0, 16), // Pre-allocate initial capacity
-		items:       &sync.Map{},
-		sizeChecker: sizeChecker,
-		linearSizes: maxSize,
+		keys:              make([]string, 0, 16), // Pre-allocate initial capacity
+		items:             &sync.Map{},
+		sizeChecker:       sizeChecker,
+		linearSizes:       maxSize,
 		linearCurrentSize: 0,
 	}
 }
 
 func (l *Linear) Push(key string, value interface{}) error {
-	if key == "" && value == nil {
+	if key == "" || value == nil {
 		return errors.New("key and value should not be empty")
 	}
 
@@ -68,7 +68,7 @@ func (l *Linear) Push(key string, value interface{}) error {
 		}
 	}
 
-	l.items.LoadOrStore(key, value)
+	l.items.Store(key, value)
 	l.sizeMux.Lock()
 	l.linearCurrentSize += itemSize
 	l.sizeMux.Unlock()
@@ -81,8 +81,15 @@ func (l *Linear) Push(key string, value interface{}) error {
 }
 
 func (l *Linear) removeByIndex(index int) (interface{}, int64, error) {
+	l.keysMux.Lock()
+	defer l.keysMux.Unlock()
+
 	if l.IsEmpty() {
 		return nil, 0, errors.New("linear is empty")
+	}
+
+	if index < 0 || index >= len(l.keys) {
+		return nil, 0, errors.New("index out of range")
 	}
 
 	key := l.keys[index]
@@ -94,9 +101,7 @@ func (l *Linear) removeByIndex(index int) (interface{}, int64, error) {
 	itemSize := l.calculateItemSize(key, item)
 	l.items.Delete(key)
 
-	l.keysMux.Lock()
 	l.keys = removeItemByIndex(l.keys, index)
-	l.keysMux.Unlock()
 
 	l.sizeMux.Lock()
 	l.linearCurrentSize -= itemSize
@@ -143,7 +148,7 @@ func (l *Linear) Read(key string) (interface{}, error) {
 }
 
 func (l *Linear) Update(key string, value interface{}) error {
-	if key == "" && value == nil {
+	if key == "" || value == nil {
 		return errors.New("key and value should not be empty")
 	}
 
@@ -156,9 +161,9 @@ func (l *Linear) Update(key string, value interface{}) error {
 		return errors.New("linear is empty or not enough space")
 	}
 
-	currentSize, exits := l.IsExits(key)
-	if !exits {
-		return errors.New("key does not exit")
+	currentSize, exists := l.IsExists(key)
+	if !exists {
+		return errors.New("key does not exist")
 	}
 
 	l.items.Store(key, value)
@@ -174,9 +179,9 @@ func (l *Linear) Range(fn func(key, value interface{}) bool) {
 	l.items.Range(fn)
 }
 
-func (l *Linear) IsExits(key string) (int64, bool) {
-	value, exits := l.items.Load(key)
-	if !exits {
+func (l *Linear) IsExists(key string) (int64, bool) {
+	value, exists := l.items.Load(key)
+	if !exists {
 		return 0, false
 	}
 	return l.calculateItemSize(key, value), true

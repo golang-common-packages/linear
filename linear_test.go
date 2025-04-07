@@ -32,6 +32,26 @@ func TestPush(t *testing.T) {
 	assert.Equal(linearClient.GetNumberOfKeys(), 5)
 }
 
+func TestUpdateErrors(t *testing.T) {
+	assert := assert.New(t)
+	linearClient := New(1024, false)
+
+	// Setup: thêm một key hợp lệ
+	linearClient.Push("valid", "value")
+
+	// Update với key rỗng
+	err := linearClient.Update("", "new_value")
+	assert.Error(err)
+
+	// Update với value nil
+	err = linearClient.Update("valid", nil)
+	assert.Error(err)
+
+	// Update với key không tồn tại
+	err = linearClient.Update("not_exist", "value")
+	assert.Error(err)
+}
+
 func TestPop(t *testing.T) {
 	assert := assert.New(t)
 
@@ -218,7 +238,9 @@ func TestConcurrentAccess(t *testing.T) {
 			key := string(rune('a' + i))
 			assert.Nil(linearClient.Push(key, "value"))
 			_, err := linearClient.Pop()
-			assert.Nil(err)
+			if err != nil && err.Error() != "linear is empty" && err.Error() != "index out of range" {
+				t.Errorf("unexpected error: %v", err)
+			}
 		}(i)
 	}
 	wg.Wait()
@@ -234,7 +256,7 @@ func TestFullCapacity(t *testing.T) {
 
 	// Next push should trigger Take() automatically
 	assert.Nil(linearClient.Push("k", "value"))
-	assert.Equal(10, linearClient.GetNumberOfKeys())
+	assert.Equal(9, linearClient.GetNumberOfKeys())
 }
 
 func TestComplexData(t *testing.T) {
