@@ -27,9 +27,9 @@ func (l *Linear) calculateItemSize(key string, value interface{}) int64 {
 	case reflect.String:
 		size += int64(v.Len())
 	case reflect.Slice, reflect.Array:
-		size += int64(v.Len())
+		size += int64(v.Len()) * int64(v.Type().Elem().Size())
 	case reflect.Map, reflect.Struct:
-		size += 64
+		size += 64 // byte
 	default:
 		size += int64(reflect.TypeOf(value).Size())
 	}
