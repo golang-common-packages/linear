@@ -38,7 +38,7 @@ func (l *Linear) calculateItemSize(key string, value interface{}) int64 {
 
 func New(maxSize int64, sizeChecker bool) *Linear {
 	if maxSize <= 0 {
-		log.Fatalln("linearSizes much higher than 0")
+		log.Fatalln("linearSizes must be higher than 0")
 	}
 
 	return &Linear{
@@ -55,14 +55,27 @@ func (l *Linear) Push(key string, value interface{}) error {
 		return errors.New("key and value should not be empty")
 	}
 
+	// Check if the key already exists
+	oldSize := int64(0)
+	oldValue, exists := l.items.Load(key)
+	if exists {
+		oldSize = l.calculateItemSize(key, oldValue)
+	}
+
+	// Only calculate the new size when necessary
 	itemSize := l.calculateItemSize(key, value)
 	if itemSize > l.linearSizes {
 		return errors.New("linear doesn't have enough memory space")
 	}
 
-	if l.sizeChecker {
-		for l.linearCurrentSize+itemSize > l.linearSizes {
+	// Calculate the actual size change needed
+	actualSizeChange := itemSize - oldSize
+
+	if l.sizeChecker && actualSizeChange > 0 {
+		// Only remove old elements if more space is needed
+		for l.linearCurrentSize+actualSizeChange > l.linearSizes {
 			if _, err := l.Take(); err != nil {
+				// If no more elements can be removed
 				return err
 			}
 		}
@@ -70,38 +83,48 @@ func (l *Linear) Push(key string, value interface{}) error {
 
 	l.items.Store(key, value)
 	l.sizeMux.Lock()
-	l.linearCurrentSize += itemSize
+	l.linearCurrentSize = l.linearCurrentSize - oldSize + itemSize
 	l.sizeMux.Unlock()
 
-	l.keysMux.Lock()
-	l.keys = append(l.keys, key)
-	l.keysMux.Unlock()
+	// Only add the key to the keys array if it doesn't already exist
+	if !exists {
+		l.keysMux.Lock()
+		l.keys = append(l.keys, key)
+		l.keysMux.Unlock()
+	}
 
 	return nil
 }
 
 func (l *Linear) removeByIndex(index int) (interface{}, int64, error) {
-	l.keysMux.Lock()
-	defer l.keysMux.Unlock()
-
+	// Check before locking to avoid deadlock
 	if l.IsEmpty() {
 		return nil, 0, errors.New("linear is empty")
 	}
 
+	l.keysMux.Lock()
+	// Check again after locking as it might have changed
+	if len(l.keys) == 0 {
+		l.keysMux.Unlock()
+		return nil, 0, errors.New("linear is empty")
+	}
+
 	if index < 0 || index >= len(l.keys) {
+		l.keysMux.Unlock()
 		return nil, 0, errors.New("index out of range")
 	}
 
 	key := l.keys[index]
+	l.keys = removeItemByIndex(l.keys, index)
+	l.keysMux.Unlock()
+
 	item, ok := l.items.Load(key)
 	if !ok {
-		return nil, 0, nil
+		return nil, 0, errors.New("key exists in keys array but not in items map")
 	}
 
 	itemSize := l.calculateItemSize(key, item)
 	l.items.Delete(key)
-
-	l.keys = removeItemByIndex(l.keys, index)
 
 	l.sizeMux.Lock()
 	l.linearCurrentSize -= itemSize
@@ -127,7 +150,7 @@ func (l *Linear) Get(key string) (interface{}, error) {
 
 	index, exists := findIndexByItem(key, l.keys)
 	if !exists {
-		return nil, nil
+		return nil, errors.New("key does not exist")
 	}
 
 	item, _, err := l.removeByIndex(index)
@@ -141,7 +164,7 @@ func (l *Linear) Read(key string) (interface{}, error) {
 
 	item, ok := l.items.Load(key)
 	if !ok {
-		return nil, nil
+		return nil, errors.New("key does not exist")
 	}
 
 	return item, nil
@@ -157,8 +180,8 @@ func (l *Linear) Update(key string, value interface{}) error {
 	}
 
 	newItemSize := l.calculateItemSize(key, value)
-	if newItemSize > l.linearSizes || l.IsEmpty() {
-		return errors.New("linear is empty or not enough space")
+	if newItemSize > l.linearSizes {
+		return errors.New("not enough space for the new value")
 	}
 
 	currentSize, exists := l.IsExists(key)
@@ -188,7 +211,10 @@ func (l *Linear) IsExists(key string) (int64, bool) {
 }
 
 func (l *Linear) IsEmpty() bool {
-	return len(l.keys) == 0
+	l.keysMux.RLock()
+	isEmpty := len(l.keys) == 0
+	l.keysMux.RUnlock()
+	return isEmpty
 }
 
 func (l *Linear) GetItems() *sync.Map {
@@ -209,7 +235,7 @@ func (l *Linear) GetLinearSizes() int64 {
 
 func (l *Linear) SetLinearSizes(linearSizes int64) error {
 	if linearSizes <= 0 {
-		return errors.New("linearSizes much higher than 0")
+		return errors.New("linearSizes must be higher than 0")
 	}
 
 	l.sizeMux.Lock()

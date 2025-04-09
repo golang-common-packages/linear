@@ -36,18 +36,18 @@ func TestUpdateErrors(t *testing.T) {
 	assert := assert.New(t)
 	linearClient := New(1024, false)
 
-	// Setup: thêm một key hợp lệ
+	// Setup: add a valid key
 	linearClient.Push("valid", "value")
 
-	// Update với key rỗng
+	// Update with empty key
 	err := linearClient.Update("", "new_value")
 	assert.Error(err)
 
-	// Update với value nil
+	// Update with nil value
 	err = linearClient.Update("valid", nil)
 	assert.Error(err)
 
-	// Update với key không tồn tại
+	// Update with non-existent key
 	err = linearClient.Update("not_exist", "value")
 	assert.Error(err)
 }
@@ -204,7 +204,7 @@ func TestUpdate(t *testing.T) {
 
 	assert.Equal(value, "b2")
 
-	assert.Equal(linearClient.GetNumberOfKeys(), 3)
+	assert.Equal(linearClient.GetNumberOfKeys(), 2)
 }
 
 func BenchmarkPush(b *testing.B) {
@@ -296,4 +296,162 @@ func TestErrorCases(t *testing.T) {
 	// Get from empty
 	_, err = linearClient.Pop()
 	assert.Error(err)
+}
+
+func TestPushDuplicateKey(t *testing.T) {
+	assert := assert.New(t)
+	linearClient := New(1024, false)
+
+	// Push a key-value pair
+	assert.Nil(linearClient.Push("key1", "value1"))
+	assert.Equal(1, linearClient.GetNumberOfKeys())
+
+	// Push the same key with a different value
+	assert.Nil(linearClient.Push("key1", "value2"))
+
+	// Verify that the number of keys hasn't changed
+	assert.Equal(1, linearClient.GetNumberOfKeys())
+
+	// Verify that the value has been updated
+	value, err := linearClient.Read("key1")
+	assert.Nil(err)
+	assert.Equal("value2", value)
+}
+
+func TestIsEmptyAndSize(t *testing.T) {
+	assert := assert.New(t)
+	linearClient := New(1024, false)
+
+	// Initially empty
+	assert.True(linearClient.IsEmpty())
+	assert.Equal(int64(0), linearClient.GetLinearCurrentSize())
+
+	// Add an item
+	assert.Nil(linearClient.Push("key1", "value1"))
+	assert.False(linearClient.IsEmpty())
+
+	// Check size increased
+	initialSize := linearClient.GetLinearCurrentSize()
+	assert.Greater(initialSize, int64(0))
+
+	// Add another item
+	assert.Nil(linearClient.Push("key2", "value2"))
+	assert.Greater(linearClient.GetLinearCurrentSize(), initialSize)
+
+	// Remove items
+	_, err := linearClient.Pop()
+	assert.Nil(err)
+	_, err = linearClient.Take()
+	assert.Nil(err)
+
+	// Should be empty again
+	assert.True(linearClient.IsEmpty())
+	assert.Equal(int64(0), linearClient.GetLinearCurrentSize())
+}
+
+func TestSetLinearSizes(t *testing.T) {
+	assert := assert.New(t)
+	linearClient := New(100, false)
+
+	// Initial size
+	assert.Equal(int64(100), linearClient.GetLinearSizes())
+
+	// Set to a valid size
+	err := linearClient.SetLinearSizes(200)
+	assert.Nil(err)
+	assert.Equal(int64(200), linearClient.GetLinearSizes())
+
+	// Try to set to an invalid size
+	err = linearClient.SetLinearSizes(0)
+	assert.Error(err)
+	assert.Equal("linearSizes must be higher than 0", err.Error())
+
+	// Size should remain unchanged
+	assert.Equal(int64(200), linearClient.GetLinearSizes())
+
+	// Try to set to a negative size
+	err = linearClient.SetLinearSizes(-100)
+	assert.Error(err)
+	assert.Equal("linearSizes must be higher than 0", err.Error())
+
+	// Size should still remain unchanged
+	assert.Equal(int64(200), linearClient.GetLinearSizes())
+}
+
+func TestRangeAndGetters(t *testing.T) {
+	assert := assert.New(t)
+	linearClient := New(1024, false)
+
+	// Add some items
+	assert.Nil(linearClient.Push("key1", "value1"))
+	assert.Nil(linearClient.Push("key2", "value2"))
+	assert.Nil(linearClient.Push("key3", "value3"))
+
+	// Test GetItems
+	items := linearClient.GetItems()
+	assert.NotNil(items)
+
+	// Test Getkeys
+	keys := linearClient.Getkeys()
+	assert.Equal(3, len(keys))
+	assert.Contains(keys, "key1")
+	assert.Contains(keys, "key2")
+	assert.Contains(keys, "key3")
+
+	// Test Range
+	count := 0
+	values := make(map[string]string)
+	linearClient.Range(func(key, value interface{}) bool {
+		count++
+		values[key.(string)] = value.(string)
+		return true
+	})
+
+	assert.Equal(3, count)
+	assert.Equal("value1", values["key1"])
+	assert.Equal("value2", values["key2"])
+	assert.Equal("value3", values["key3"])
+
+	// Test Range with early termination
+	count = 0
+	linearClient.Range(func(key, value interface{}) bool {
+		count++
+		return false // Stop after first item
+	})
+
+	assert.Equal(1, count)
+}
+
+func TestIsExists(t *testing.T) {
+	assert := assert.New(t)
+	linearClient := New(1024, false)
+
+	// Check non-existent key
+	size, exists := linearClient.IsExists("nonexistent")
+	assert.Equal(int64(0), size)
+	assert.False(exists)
+
+	// Add an item
+	assert.Nil(linearClient.Push("key1", "value1"))
+
+	// Check existing key
+	size, exists = linearClient.IsExists("key1")
+	assert.True(exists)
+	assert.Greater(size, int64(0))
+
+	// Add a larger item
+	assert.Nil(linearClient.Push("key2", strings.Repeat("x", 100)))
+
+	// Check that size is proportional to content
+	size1, _ := linearClient.IsExists("key1")
+	size2, _ := linearClient.IsExists("key2")
+	assert.Greater(size2, size1)
+
+	// Remove an item
+	_, err := linearClient.Get("key1")
+	assert.Nil(err)
+
+	// Check that removed key no longer exists
+	_, exists = linearClient.IsExists("key1")
+	assert.False(exists)
 }
