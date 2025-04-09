@@ -20,14 +20,23 @@ jobs:
         go-version: '1.24.2'
 
     - name: Cache Go modules
+      id: go-cache
       uses: actions/cache@v4
       with:
         path: |
           ~/.cache/go-build
           ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
         restore-keys: |
+          ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-
           ${{ runner.os }}-go-
+
+    - name: Clean Go module cache if needed
+      if: steps.go-cache.outputs.cache-hit == 'true'
+      run: go clean -modcache
+
+    - name: Go mod tidy
+      run: go mod tidy
 
     - name: Download dependencies
       run: go mod download
