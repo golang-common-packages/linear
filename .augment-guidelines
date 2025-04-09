@@ -1,0 +1,14 @@
+# User Preferences
+
+- The user prefers to communicate in Vietnamese.
+- The user prefers code comments to be in English rather than Vietnamese.
+
+# Project Guidelines
+
+- This is a Go package providing linear data structures and algorithms implementations.
+- The package requires Go 1.24 or higher.
+- All code comments should be in English for better readability.
+- Error messages should be clear and descriptive.
+- Thread safety is important as the package supports concurrent access.
+- Performance optimization is a priority, especially for large datasets.
+- Test coverage should be comprehensive, including unit tests and benchmarks.
